@@ -8,27 +8,6 @@
 
 #define PLUGIN_ID "eionrobb_paste_image"
 
-gsize
-gdk_pixbuf_get_byte_length (const GdkPixbuf *pixbuf)
-{
-	g_return_val_if_fail (GDK_IS_PIXBUF (pixbuf), -1);
-
-        return ((gdk_pixbuf_get_height(pixbuf) - 1) * gdk_pixbuf_get_rowstride(pixbuf) +
-                gdk_pixbuf_get_width(pixbuf) * ((gdk_pixbuf_get_n_channels(pixbuf) * gdk_pixbuf_get_bits_per_sample(pixbuf) + 7) / 8));
-}
-
-guchar *
-gdk_pixbuf_get_pixels_with_length (const GdkPixbuf *pixbuf,
-                                   guint           *length)
-{
-	g_return_val_if_fail (GDK_IS_PIXBUF (pixbuf), NULL);
-
-        if (length)
-                *length = gdk_pixbuf_get_byte_length (pixbuf);
-
-	return gdk_pixbuf_get_pixels(pixbuf);
-}
-
 static void
 erpi_clipboard_image_received(GtkClipboard *clipboard, GdkPixbuf *pixbuf, gpointer user_data)
 {
@@ -38,8 +17,9 @@ erpi_clipboard_image_received(GtkClipboard *clipboard, GdkPixbuf *pixbuf, gpoint
 		return;
 	}
 	
-	guint len;
-	guchar *data = gdk_pixbuf_get_pixels_with_length(pixbuf, &len);
+	gsize len;
+	gchar *data;
+	gdk_pixbuf_save_to_buffer(pixbuf, &data, &len, "png", NULL, NULL);
 	int img_id = purple_imgstore_add_with_id(data, len, "clipboard_image");
 
 	GtkTextIter iter;
@@ -57,8 +37,10 @@ erpi_paste_clipboard_cb(GtkIMHtml *imhtml, const char *str)
 {
 	if (!gtk_text_view_get_editable(GTK_TEXT_VIEW(imhtml)))
 		return;
+	if (!(imhtml->format_functions & GTK_IMHTML_IMAGE))
+		return;
 	
-	purple_debug_info("paste_image", "Pasting clipboard image %s\n", str);
+	purple_debug_info("paste_image", "Pasting clipboard image\n");
 	GtkClipboard *clipboard = gtk_widget_get_clipboard(GTK_WIDGET(imhtml), GDK_SELECTION_CLIPBOARD);
 	gtk_clipboard_request_image(clipboard, erpi_clipboard_image_received, imhtml);	
 }
@@ -67,7 +49,7 @@ erpi_paste_clipboard_cb(GtkIMHtml *imhtml, const char *str)
 static void
 detach_from_gtkconv(PidginConversation *gtkconv, gpointer null)
 {
-	g_signal_handlers_disconnect_by_func(G_OBJECT(gtkconv->imhtml), G_CALLBACK(erpi_paste_clipboard_cb), NULL);
+	g_signal_handlers_disconnect_by_func(G_OBJECT(gtkconv->entry), G_CALLBACK(erpi_paste_clipboard_cb), NULL);
 }
 
 static void
@@ -76,11 +58,43 @@ detach_from_pidgin_window(PidginWindow *win, gpointer null)
 	g_list_foreach(pidgin_conv_window_get_gtkconvs(win), (GFunc)detach_from_gtkconv, NULL);
 }
 
+
+static void 
+erpi_hijack_menu_cb(GtkIMHtml *imhtml, GtkMenu *menu, gpointer data)
+{
+	GList *children, *iter;
+	GtkStockItem stock_item;
+	GtkClipboard *clipboard = gtk_widget_get_clipboard(GTK_WIDGET(imhtml), GDK_SELECTION_CLIPBOARD);
+	gboolean image_in_buffer = gtk_clipboard_wait_is_image_available(clipboard);
+
+	if (!image_in_buffer)
+		return;
+		
+	if (!(imhtml->format_functions & GTK_IMHTML_IMAGE))
+		return;
+
+	gtk_stock_lookup(GTK_STOCK_PASTE, &stock_item);
+
+	children = gtk_container_get_children(GTK_CONTAINER(menu));
+	for (iter = children; iter != NULL; iter = iter->next) {
+		GtkMenuItem *item = GTK_MENU_ITEM(iter->data);
+		GtkWidget *child = GTK_BIN(item)->child;
+		// Look for GTK_STOCK_PASTE and activate it if there's image data to paste
+		if (child && GTK_IS_LABEL(child) && purple_strequal(gtk_label_get_label(GTK_LABEL(child)), stock_item.label)) {
+			
+			gtk_widget_set_sensitive(GTK_WIDGET(item), image_in_buffer);
+			break;
+		}
+	}
+}
+
 static void
 attach_to_gtkconv(PidginConversation *gtkconv, gpointer null)
 {
 	detach_from_gtkconv(gtkconv, NULL);
-	g_signal_connect(G_OBJECT(gtkconv->imhtml), "paste", G_CALLBACK(erpi_paste_clipboard_cb), NULL);
+	g_signal_connect(G_OBJECT(gtkconv->entry), "paste", G_CALLBACK(erpi_paste_clipboard_cb), NULL);
+	g_signal_connect(G_OBJECT(gtkconv->entry), "paste-clipboard", G_CALLBACK(erpi_paste_clipboard_cb), NULL);
+	g_signal_connect(G_OBJECT(gtkconv->entry), "populate-popup", G_CALLBACK(erpi_hijack_menu_cb), NULL);
 }
 
 static void
