@@ -39,38 +39,31 @@ erpi_paste_clipboard_cb(GtkIMHtml *imhtml, const char *str)
 		return;
 	if (!(imhtml->format_functions & GTK_IMHTML_IMAGE))
 		return;
+	if (!purple_strequal(str, "html"))
+		return;
 	
-	purple_debug_info("paste_image", "Pasting clipboard image\n");
 	GtkClipboard *clipboard = gtk_widget_get_clipboard(GTK_WIDGET(imhtml), GDK_SELECTION_CLIPBOARD);
-	gtk_clipboard_request_image(clipboard, erpi_clipboard_image_received, imhtml);	
-}
-
-
-static void
-detach_from_gtkconv(PidginConversation *gtkconv, gpointer null)
-{
-	g_signal_handlers_disconnect_by_func(G_OBJECT(gtkconv->entry), G_CALLBACK(erpi_paste_clipboard_cb), NULL);
+	gtk_clipboard_request_image(clipboard, erpi_clipboard_image_received, imhtml);
 }
 
 static void
-detach_from_pidgin_window(PidginWindow *win, gpointer null)
+paste_image_cb(GtkMenuItem *menu, GtkIMHtml *imhtml)
 {
-	g_list_foreach(pidgin_conv_window_get_gtkconvs(win), (GFunc)detach_from_gtkconv, NULL);
+	erpi_paste_clipboard_cb(imhtml, "html");
 }
-
 
 static void 
 erpi_hijack_menu_cb(GtkIMHtml *imhtml, GtkMenu *menu, gpointer data)
 {
+	if (!(imhtml->format_functions & GTK_IMHTML_IMAGE))
+		return;
+
 	GList *children, *iter;
 	GtkStockItem stock_item;
 	GtkClipboard *clipboard = gtk_widget_get_clipboard(GTK_WIDGET(imhtml), GDK_SELECTION_CLIPBOARD);
 	gboolean image_in_buffer = gtk_clipboard_wait_is_image_available(clipboard);
 
 	if (!image_in_buffer)
-		return;
-		
-	if (!(imhtml->format_functions & GTK_IMHTML_IMAGE))
 		return;
 
 	gtk_stock_lookup(GTK_STOCK_PASTE, &stock_item);
@@ -81,7 +74,7 @@ erpi_hijack_menu_cb(GtkIMHtml *imhtml, GtkMenu *menu, gpointer data)
 		GtkWidget *child = GTK_BIN(item)->child;
 		// Look for GTK_STOCK_PASTE and activate it if there's image data to paste
 		if (child && GTK_IS_LABEL(child) && purple_strequal(gtk_label_get_label(GTK_LABEL(child)), stock_item.label)) {
-			
+			g_signal_connect(G_OBJECT(item), "activate", G_CALLBACK(paste_image_cb), imhtml);
 			gtk_widget_set_sensitive(GTK_WIDGET(item), image_in_buffer);
 			break;
 		}
@@ -89,11 +82,23 @@ erpi_hijack_menu_cb(GtkIMHtml *imhtml, GtkMenu *menu, gpointer data)
 }
 
 static void
+detach_from_gtkconv(PidginConversation *gtkconv, gpointer null)
+{
+	g_signal_handlers_disconnect_by_func(G_OBJECT(gtkconv->entry), G_CALLBACK(erpi_paste_clipboard_cb), NULL);
+	g_signal_handlers_disconnect_by_func(G_OBJECT(gtkconv->entry), G_CALLBACK(erpi_hijack_menu_cb), NULL);
+}
+
+static void
+detach_from_pidgin_window(PidginWindow *win, gpointer null)
+{
+	g_list_foreach(pidgin_conv_window_get_gtkconvs(win), (GFunc)detach_from_gtkconv, NULL);
+}
+
+static void
 attach_to_gtkconv(PidginConversation *gtkconv, gpointer null)
 {
 	detach_from_gtkconv(gtkconv, NULL);
 	g_signal_connect(G_OBJECT(gtkconv->entry), "paste", G_CALLBACK(erpi_paste_clipboard_cb), NULL);
-	g_signal_connect(G_OBJECT(gtkconv->entry), "paste-clipboard", G_CALLBACK(erpi_paste_clipboard_cb), NULL);
 	g_signal_connect(G_OBJECT(gtkconv->entry), "populate-popup", G_CALLBACK(erpi_hijack_menu_cb), NULL);
 }
 
@@ -128,6 +133,10 @@ conv_created(PidginConversation *gtkconv, gpointer null)
 	attach_to_pidgin_window(win, NULL);
 }
 
+#ifndef GTK_v
+#define GDK_v 0x076
+#endif
+
 static gboolean
 plugin_load(PurplePlugin *plugin)
 {
@@ -135,6 +144,10 @@ plugin_load(PurplePlugin *plugin)
 
 	purple_signal_connect(pidgin_conversations_get_handle(), "conversation-displayed",
 						plugin, PURPLE_CALLBACK(conv_created), NULL);
+	
+	GtkIMHtmlClass *klass = g_type_class_ref(GTK_TYPE_IMHTML);
+	GtkBindingSet *binding_set = gtk_binding_set_by_class(klass);
+	gtk_binding_entry_add_signal(binding_set, GDK_v, GDK_CONTROL_MASK, "paste", 1, G_TYPE_STRING, "html");
 
 	return TRUE;
 }
@@ -143,6 +156,10 @@ static gboolean
 plugin_unload(PurplePlugin *plugin)
 {
 	detach_from_all_windows();
+
+	GtkIMHtmlClass *klass = g_type_class_ref(GTK_TYPE_IMHTML);
+	GtkBindingSet *binding_set = gtk_binding_set_by_class(klass);
+	gtk_binding_entry_remove(binding_set, GDK_v, GDK_CONTROL_MASK);
 
 	return TRUE;
 }
