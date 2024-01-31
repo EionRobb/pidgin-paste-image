@@ -20,7 +20,7 @@ erpi_clipboard_image_received(GtkClipboard *clipboard, GdkPixbuf *pixbuf, gpoint
 	gsize len;
 	gchar *data;
 	gdk_pixbuf_save_to_buffer(pixbuf, &data, &len, "png", NULL, NULL);
-	int img_id = purple_imgstore_add_with_id(data, len, "clipboard_image");
+	int img_id = purple_imgstore_add_with_id(data, len, "clipboard_image.png");
 
 	GtkTextIter iter;
 	GtkTextMark *ins;
@@ -177,7 +177,7 @@ static PurplePluginInfo info =
 
 	PLUGIN_ID,                                        /**< id             */
 	"Paste Images",                                   /**< name           */
-	"0.1",                                            /**< version        */
+	"1.0",                                            /**< version        */
 	                                                  /**  summary        */
 	"Allow pasting images into a coversation window",
 	                                                  /**  description    */
