@@ -8,6 +8,9 @@ For protocols that allow sending inline images, just enable this plugin through 
 
 Then either Ctrl+V or right-click and Paste to insert
 
+## Windows Users
+Download the latest .dll from https://github.com/EionRobb/pidgin-paste-image/releases/tag/1.0
+Save to the C:\Program Files (x86)\Pidgin\plugins folder
 
 ## Compiling
 ```
