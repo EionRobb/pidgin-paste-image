@@ -85,7 +85,7 @@ C_FILES = \
 all: $(PLUGIN_TARGET)
 
 paste_image.so: $(C_FILES) 
-	$(CC) -fPIC $(CFLAGS) -shared -o $@ $^ $(LDFLAGS) $(PROTOBUF_OPTS) `$(PKG_CONFIG) purple pidgin glib-2.0 gtk-2.0 --libs --cflags`  $(INCLUDES) -g -ggdb
+	$(CC) -fPIC $(CFLAGS) -shared -o $@ $^ $(LDFLAGS) $(PROTOBUF_OPTS) `$(PKG_CONFIG) purple pidgin glib-2.0 gtk+-2.0 --libs --cflags`  $(INCLUDES) -g -ggdb
 
 paste_image.dll: $(C_FILES)
 	$(WIN32_CC) -shared -o $@ $^ $(WIN32_CFLAGS) $(WIN32_LDFLAGS) 
