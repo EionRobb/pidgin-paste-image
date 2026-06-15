@@ -26,22 +26,22 @@ jobs:
             name: plugin 
             path: paste_image.so
 
-      - name: Set date
-        id: date
-        run: echo "DATE=$(date +%Y-%m-%d)" >> $GITHUB_OUTPUT
-
-      - name: release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !env.ACT
-        uses: ncipollo/release-action@v1
-        with:
-          artifacts: paste_image.so
-          tag: daily-${{ steps.date.outputs.DATE }}
-          name: Daily ${{ steps.date.outputs.DATE }}
-          allowUpdates: true
-          makeLatest: true
-
-      - name: attest
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !env.ACT
-        uses: actions/attest-build-provenance@v1
-        with:
-          subject-path: paste_image.so
+#      - name: Set date
+#        id: date
+#        run: echo "DATE=$(date +%Y-%m-%d)" >> $GITHUB_OUTPUT
+#
+#      - name: release
+#        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !env.ACT
+#        uses: ncipollo/release-action@v1
+#        with:
+#          artifacts: paste_image.so
+#          tag: daily-${{ steps.date.outputs.DATE }}
+#          name: Daily ${{ steps.date.outputs.DATE }}
+#          allowUpdates: true
+#          makeLatest: true
+#
+#      - name: attest
+#        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !env.ACT
+#        uses: actions/attest-build-provenance@v1
+#        with:
+#          subject-path: paste_image.so
