@@ -52,6 +52,49 @@ paste_image_cb(GtkMenuItem *menu, GtkIMHtml *imhtml)
 	erpi_paste_clipboard_cb(imhtml, "html");
 }
 
+static gboolean
+is_paste_label(const char *label, const char *stock_label)
+{
+	if (!label)
+		return FALSE;
+
+	// Direct match (fast path)
+	if (purple_strequal(label, stock_label))
+		return TRUE;
+	if (g_ascii_strcasecmp(label, "Paste") == 0 || g_ascii_strcasecmp(label, "_Paste") == 0)
+		return TRUE;
+
+	// Mnemonic-stripped check
+	gboolean match = FALSE;
+	gchar *clean_label = g_strdup(label);
+	gchar *clean_stock = stock_label ? g_strdup(stock_label) : NULL;
+	gchar *src, *dst;
+
+	for (src = dst = clean_label; *src != '\0'; src++) {
+		if (*src != '_')
+			*dst++ = *src;
+	}
+	*dst = '\0';
+
+	if (clean_stock) {
+		for (src = dst = clean_stock; *src != '\0'; src++) {
+			if (*src != '_')
+				*dst++ = *src;
+		}
+		*dst = '\0';
+	}
+
+	if (g_ascii_strcasecmp(clean_label, "Paste") == 0) {
+		match = TRUE;
+	} else if (clean_stock && g_ascii_strcasecmp(clean_label, clean_stock) == 0) {
+		match = TRUE;
+	}
+
+	g_free(clean_label);
+	g_free(clean_stock);
+	return match;
+}
+
 static void 
 erpi_hijack_menu_cb(GtkIMHtml *imhtml, GtkMenu *menu, gpointer data)
 {
@@ -63,23 +106,43 @@ erpi_hijack_menu_cb(GtkIMHtml *imhtml, GtkMenu *menu, gpointer data)
 	GtkClipboard *clipboard = gtk_widget_get_clipboard(GTK_WIDGET(imhtml), GDK_SELECTION_CLIPBOARD);
 	gboolean image_in_buffer = gtk_clipboard_wait_is_image_available(clipboard);
 
-	if (!image_in_buffer)
-		return;
-
 	gtk_stock_lookup(GTK_STOCK_PASTE, &stock_item);
 
 	children = gtk_container_get_children(GTK_CONTAINER(menu));
 	for (iter = children; iter != NULL; iter = iter->next) {
 		GtkMenuItem *item = GTK_MENU_ITEM(iter->data);
 		GtkWidget *child = GTK_BIN(item)->child;
-		// Look for GTK_STOCK_PASTE and activate it if there's image data to paste
-		if (child && GTK_IS_LABEL(child) && purple_strequal(gtk_label_get_label(GTK_LABEL(child)), stock_item.label)) {
+		gboolean is_paste = FALSE;
+
+		if (child && GTK_IS_LABEL(child)) {
+			const char *label_text = gtk_label_get_label(GTK_LABEL(child));
+			if (is_paste_label(label_text, stock_item.label)) {
+				is_paste = TRUE;
+			}
+		}
+
+		if (!is_paste && GTK_IS_IMAGE_MENU_ITEM(item)) {
+			GtkWidget *image = gtk_image_menu_item_get_image(GTK_IMAGE_MENU_ITEM(item));
+			if (GTK_IS_IMAGE(image)) {
+				gchar *stock_id = NULL;
+				gtk_image_get_stock(GTK_IMAGE(image), &stock_id, NULL);
+				if (stock_id && purple_strequal(stock_id, GTK_STOCK_PASTE)) {
+					is_paste = TRUE;
+				}
+			}
+		}
+
+		if (is_paste) {
+			g_signal_handlers_disconnect_by_func(G_OBJECT(item), G_CALLBACK(paste_image_cb), imhtml);
 			g_signal_connect(G_OBJECT(item), "activate", G_CALLBACK(paste_image_cb), imhtml);
-			gtk_widget_set_sensitive(GTK_WIDGET(item), image_in_buffer);
+			if (image_in_buffer) {
+				gtk_widget_set_sensitive(GTK_WIDGET(item), TRUE);
+			}
 			break;
 		}
 	}
 }
+
 
 static void
 detach_from_gtkconv(PidginConversation *gtkconv, gpointer null)
@@ -123,17 +186,10 @@ attach_to_all_windows(void)
 static void
 conv_created(PidginConversation *gtkconv, gpointer null)
 {
-	PidginWindow *win;
-
-	win = pidgin_conv_get_window(gtkconv);
-	if (!win)
-		return;
-
-	detach_from_pidgin_window(win, NULL);
-	attach_to_pidgin_window(win, NULL);
+	attach_to_gtkconv(gtkconv, NULL);
 }
 
-#ifndef GTK_v
+#ifndef GDK_v
 #define GDK_v 0x076
 #endif
 
