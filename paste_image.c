@@ -52,46 +52,83 @@ paste_image_cb(GtkMenuItem *menu, GtkIMHtml *imhtml)
 	erpi_paste_clipboard_cb(imhtml, "html");
 }
 
+static GtkWidget *
+find_label_in_widget(GtkWidget *widget)
+{
+	if (!widget)
+		return NULL;
+	if (GTK_IS_LABEL(widget))
+		return widget;
+	if (GTK_IS_CONTAINER(widget)) {
+		GList *children = gtk_container_get_children(GTK_CONTAINER(widget));
+		GList *l;
+		GtkWidget *label = NULL;
+		for (l = children; l != NULL; l = l->next) {
+			label = find_label_in_widget(GTK_WIDGET(l->data));
+			if (label)
+				break;
+		}
+		g_list_free(children);
+		return label;
+	}
+	return NULL;
+}
+
+static gchar *
+strip_mnemonic(const char *str)
+{
+	if (!str)
+		return NULL;
+	gchar *clean = g_strdup(str);
+	gchar *src, *dst;
+	for (src = dst = clean; *src != '\0'; src++) {
+		if (*src != '_')
+			*dst++ = *src;
+	}
+	*dst = '\0';
+	return clean;
+}
+
 static gboolean
 is_paste_label(const char *label, const char *stock_label)
 {
 	if (!label)
 		return FALSE;
 
-	// Direct match (fast path)
-	if (purple_strequal(label, stock_label))
-		return TRUE;
-	if (g_ascii_strcasecmp(label, "Paste") == 0 || g_ascii_strcasecmp(label, "_Paste") == 0)
-		return TRUE;
-
-	// Mnemonic-stripped check
-	gboolean match = FALSE;
-	gchar *clean_label = g_strdup(label);
-	gchar *clean_stock = stock_label ? g_strdup(stock_label) : NULL;
-	gchar *src, *dst;
-
-	for (src = dst = clean_label; *src != '\0'; src++) {
-		if (*src != '_')
-			*dst++ = *src;
-	}
-	*dst = '\0';
-
-	if (clean_stock) {
-		for (src = dst = clean_stock; *src != '\0'; src++) {
-			if (*src != '_')
-				*dst++ = *src;
-		}
-		*dst = '\0';
-	}
-
-	if (g_ascii_strcasecmp(clean_label, "Paste") == 0) {
-		match = TRUE;
-	} else if (clean_stock && g_ascii_strcasecmp(clean_label, clean_stock) == 0) {
-		match = TRUE;
-	}
-
+	gchar *clean_label = strip_mnemonic(label);
+	gchar *folded_label = g_utf8_casefold(clean_label, -1);
 	g_free(clean_label);
-	g_free(clean_stock);
+
+	const char *candidates[] = {
+		"Paste",
+		"_Paste",
+		stock_label,
+		g_dgettext("pidgin", "Paste"),
+		g_dgettext("pidgin", "_Paste"),
+		g_dgettext("gtk20", "Paste"),
+		g_dgettext("gtk20", "_Paste"),
+		NULL
+	};
+
+	gboolean match = FALSE;
+	int i;
+	for (i = 0; candidates[i] != NULL; i++) {
+		gchar *clean_cand = strip_mnemonic(candidates[i]);
+		if (!clean_cand)
+			continue;
+
+		gchar *folded_cand = g_utf8_casefold(clean_cand, -1);
+		g_free(clean_cand);
+
+		if (g_strcmp0(folded_label, folded_cand) == 0) {
+			match = TRUE;
+			g_free(folded_cand);
+			break;
+		}
+		g_free(folded_cand);
+	}
+
+	g_free(folded_label);
 	return match;
 }
 
@@ -114,8 +151,9 @@ erpi_hijack_menu_cb(GtkIMHtml *imhtml, GtkMenu *menu, gpointer data)
 		GtkWidget *child = GTK_BIN(item)->child;
 		gboolean is_paste = FALSE;
 
-		if (child && GTK_IS_LABEL(child)) {
-			const char *label_text = gtk_label_get_label(GTK_LABEL(child));
+		GtkWidget *label_widget = find_label_in_widget(child);
+		if (label_widget) {
+			const char *label_text = gtk_label_get_label(GTK_LABEL(label_widget));
 			if (is_paste_label(label_text, stock_item.label)) {
 				is_paste = TRUE;
 			}
